@@ -60,61 +60,61 @@ Available device types are:
 
 Example config with all supported device types:
 
-
-[NET-PwrCtrl]
-device=anel_powerstrip
-host=192.168.31.121
-port=75
-user=user1
-pwd=anel
-1=Lamp
-2=IPMI Switch
-3=Plant Lights
-4=Amp
-5=Monitor
-6=Mixer
-7=Plant Light II
-8=Plant Light III
-#preset1=0,0,0,0,0,0,0,0
-#preset2=0,0,0,0,0,0,0,0
-#preset3=0,0,0,0,0,0,0,0
-
-[HP2530]
-device=poe_pse
-host=192.168.31.122
-port=161
-user=probe
-authkey=snmpauthkey
-auth_protocol=SHA
-privkey=snmpprivkey
-priv_protocol=DES
-#preset1=0,0,0,0,0,0,0,0
-#preset2=0,0,0,0,0,0,0,0
-#preset3=0,0,0,0,0,0,0,0
-
-[ATEN PDU]
-device=aten_pdu
-host=192.168.31.130
-port=161
-user=snmpusername
-authkey=snmpauthkey
-auth_protocol=MD5
-privkey=snmpprivkey
-priv_protocol=AES
-#preset1=0,0,0,0,0,0,0,0
-#preset2=0,0,0,0,0,0,0,0
-#preset3=0,0,0,0,0,0,0,0
-
-[SMC NAS IPMI]
-device=ipmi
-host=192.168.31.140
-port=623
-user=username
-pwd=password
-
-[SMC NODE 1 Redfish]
-device=redfish
-host=192.168.31.140
-port=443
-user=username
-pwd=password
+	
+	[NET-PwrCtrl]
+	device=anel_powerstrip
+	host=192.168.31.121
+	port=75
+	user=user1
+	pwd=anel
+	1=Lamp
+	2=IPMI Switch
+	3=Plant Lights
+	4=Amp
+	5=Monitor
+	6=Mixer
+	7=Plant Light II
+	8=Plant Light III
+	#preset1=0,0,0,0,0,0,0,0
+	#preset2=0,0,0,0,0,0,0,0
+	#preset3=0,0,0,0,0,0,0,0
+	
+	[HP2530]
+	device=poe_pse
+	host=192.168.31.122
+	port=161
+	user=probe
+	authkey=snmpauthkey
+	auth_protocol=SHA
+	privkey=snmpprivkey
+	priv_protocol=DES
+	#preset1=0,0,0,0,0,0,0,0
+	#preset2=0,0,0,0,0,0,0,0
+	#preset3=0,0,0,0,0,0,0,0
+	
+	[ATEN PDU]
+	device=aten_pdu
+	host=192.168.31.130
+	port=161
+	user=snmpusername
+	authkey=snmpauthkey
+	auth_protocol=MD5
+	privkey=snmpprivkey
+	priv_protocol=AES
+	#preset1=0,0,0,0,0,0,0,0
+	#preset2=0,0,0,0,0,0,0,0
+	#preset3=0,0,0,0,0,0,0,0
+	
+	[SMC NAS IPMI]
+	device=ipmi
+	host=192.168.31.140
+	port=623
+	user=username
+	pwd=password
+	
+	[SMC NODE 1 Redfish]
+	device=redfish
+	host=192.168.31.140
+	port=443
+	user=username
+	pwd=password
