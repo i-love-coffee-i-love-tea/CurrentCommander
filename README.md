@@ -52,7 +52,7 @@ device will be displayed in the upper left corner.
 Available device types are:  
 
 - anel_powerstrip for power strips from ANEL
-- poe_pse in case of a poe switch PSE=power sourcing equipment
+- poe_pse in case of a poe switch (PSE=power sourcing equipment)
 - ipmi
 - redfish
 
