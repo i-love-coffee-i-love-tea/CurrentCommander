@@ -32,7 +32,6 @@ class NetPwrCtrl:
                 data = line.strip().split("=")
                 values = data[1].split(",")
                 self.presets[0][outlet_id-1] = int(values[1])
-                #print("%s %d" % (outlet_id, self.presets[0][outlet_id-1]))
                 self.presets[1][outlet_id-1] = int(values[2])
                 self.presets[2][outlet_id-1] = int(values[3])
                 self.outlets[data[0]] = values[0]
@@ -48,7 +47,7 @@ class NetPwrCtrl:
         return values;
 
     def toggle_outlet(self, outlet_id):
-        if self.states[outlet_id] == 0:
+        if self.states[outlet_id-1] == 0:
             self.switch_on(outlet_id)
         else:
             self.switch_off(outlet_id)
@@ -59,18 +58,18 @@ class NetPwrCtrl:
 
     def switch_on(self, outlet_id):
         self._switch(outlet_id, "Sw_on")
-        self.states[outlet_id] = 1
+        self.states[outlet_id-1] = 1
 
     def switch_off(self, outlet_id):
         self._switch(outlet_id, "Sw_off")
-        self.states[outlet_id] = 0
+        self.states[outlet_id-1] = 0
 
 
     def activate_preset(self, preset_index):
         outlet_id = 1
         outlets_switched_on = 0
         for p in self.presets[preset_index]:
-            if p != self.states[outlet_id]:
+            if p != self.states[outlet_id-1]:
                 # sleep before toggling the next outlet
                 if outlets_switched_on > 0:
                     time.sleep(self.multi_power_on_delay)
@@ -113,7 +112,6 @@ class CursesUI:
             self.preset2_content.append(urwid.AttrMap(cb_preset2, "normal", "selected"))
             cb_preset3 = urwid.CheckBox(outlet, self.netpwrctrl.presets[2][outlet_id-1])
             self.preset3_content.append(urwid.AttrMap(cb_preset3, "normal", "selected"))
-            #print(outlet)
             outlet_id += 1
 
     def init_ui(self):
@@ -159,7 +157,8 @@ class CursesUI:
         self.body_pile = urwid.Pile([self.outlets_linebox, self.presets_columns])
          
     
-        self.layout = urwid.Frame(header=urwid.Columns([header, urwid.Edit(caption="Multi Power on Delay: ", edit_text=str(self.netpwrctrl.multi_power_on_delay))]), body=self.body_pile, footer=menu)
+        label_delay = urwid.Text([('hotkey', u'D'), u'elay  '])
+        self.layout = urwid.Frame(header=urwid.Columns([header, urwid.Columns([label_delay, urwid.Edit(caption="Multi Power on Delay: ", edit_text=str(self.netpwrctrl.multi_power_on_delay))])]), body=self.body_pile, footer=menu)
         self.main_loop = urwid.MainLoop(self.layout, palette, unhandled_input=self.handle_input)
         self.load_outlet_names_and_states()
         
@@ -168,13 +167,22 @@ class CursesUI:
     def handle_input(self, key):
         if key == 'R' or key == 'r':
            self.load_outlet_names_and_states()
-        if key == 'Q' or key == 'q':
+        elif key == 'Q' or key == 'q':
             raise urwid.ExitMainLoop()
-        if key == 'tab':
+        elif key == 'tab':
            if self.layout.get_focus() == 'body':
                self.layout.focus_position = 'header'
            elif self.layout.get_focus() == 'header':
                self.layout.focus_position = 'body'
+        else:
+             try:
+                  outlet_id = int(key)
+                  if 0 < outlet_id < 9:
+                      self.netpwrctrl.toggle_outlet(outlet_id);
+                      self.load_outlet_names_and_states()
+             except:
+                  True
+                       
 
     def on_checkbox_toggled(self, arg1, arg2):
         self.toggle_selected_outlet()
