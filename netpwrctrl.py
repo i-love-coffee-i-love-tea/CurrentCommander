@@ -290,7 +290,7 @@ class IPMIDevice(PowerStripController):
                     bmc=self.cfg['host'], userid=self.cfg['user'], password=self.cfg['pwd'], port=port
                 )
                 self.cmd = cmd
-                self.event_thread = IPMISessionKeepaliveThread()
+                self.event_thread = IPMISessionKeepaliveThread(None)
                 self.event_thread.start()
              
             except Exception as e:
@@ -990,14 +990,14 @@ class CursesUI:
         if next_index > len(self.cfg.get_sections())-1:
             next_index = 0
         try:
-            print("loading config", file=sys.stderr)
+            #print("loading config", file=sys.stderr)
             self.load_config(next_index)
             #print ("after loading config", file=sys.stderr)
         except:
             print("exception", file=sys.stderr)
             return
          
-        print("after loading config", file=sys.stderr)
+        #print("after loading config", file=sys.stderr)
         self.selected_powerstrip = next_index
         self.refresh_ui(keep_selection=False)
         self.title.set_text(self.active_powerstrip.cfg.name + u' ' + self.active_powerstrip.cfg['host'] + ':' + self.active_powerstrip.cfg['port'])
