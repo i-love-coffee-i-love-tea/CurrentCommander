@@ -23,24 +23,49 @@ import httplib2
 # TODO/Ideas:
 # - create config file if none exists
 #    - open powerstrip edit dialog, save, then reload ui
-# - toggle between powerstrips
-# - support ATEN PDU
+# - toggle between powerstrips (done)
+# - support ATEN PDU 
+#    - make NetPwrCtrl and AtenPDU inherit same subclass (done) i think it was not required and i was too much in the java world
+#    - display states and names (done)
+#    - toggle states
+#    - display power usage
+#    - edit outlet names
+#    - power usage plot
 # - manage crontab to send on/off commands at scheduled times (apt: python-crontab, from crontab import CronTab)
-#
+# - allow to create dependency rules
+#    - switch on outlet 1 and 2, of they were off, when outlet 3 is toggled (to reduce amp popping, when mixer is powered on)
 
 
-class PowerStripController():
-    def __init__(self):
+class PowerStripController(object):
+    cfg = None
+    last_refresh = None
+    multi_power_on_delay = 2
+    outlets = []
+
+    def __init__(self, cfg):
+        self.cfg = cfg
+        True
+
+    #def refresh(self):
+    def get_last_refresh(self):
+        return self.last_refresh
+
+    def toggle_outlet(self, outlet_id):
         True
 
 class AtenPDU(PowerStripController):
 
-    def __init__(self, cfg):
-        self.cfg = cfg
+    namesOID  = rfc1902.ObjectName('1.3.6.1.4.1.21317.1.3.2.2.2.2.10.1.2')
+    statesOID = rfc1902.ObjectName('1.3.6.1.4.1.21317.1.3.2.2.2.1.5.1.2')
+    powerOID  = rfc1902.ObjectName('1.3.6.1.4.1.21317.1.3.2.2.2.2.99.1.4')
 
-        self.names = []
-        self.states = []
-        self.power = []
+    names = []
+    states = []
+    power = []
+
+    def __init__(self, cfg):
+        #super(AtenPDU, self).__init__()
+        super(AtenPDU, self).__init__(cfg)
 
         # Create SNMP engine instance
         self.snmpEngine = engine.SnmpEngine()
@@ -104,6 +129,7 @@ class AtenPDU(PowerStripController):
                                 errorIndex and varBinds[int(errorIndex) - 1][0] or '?'))
         else:
 
+            #self.outlets = [{},{},{},{}, {},{},{},{}]
             first_name = True
             first_status = True
             first_power = True
@@ -111,17 +137,18 @@ class AtenPDU(PowerStripController):
             for varBindRow in varBindTable:
                 for oid, val in varBindRow:
                     #print('%s = %s' % (oid.prettyPrint(), val.prettyPrint()))
-                    if namesOID.isPrefixOf(oid):
+                    if self.namesOID.isPrefixOf(oid):
+                        #print(oid)
                         if first_name:
                             self.names.clear()
                             first_name = False
                         self.names.append(val.prettyPrint())
-                    elif statesOID.isPrefixOf(oid):
+                    elif self.statesOID.isPrefixOf(oid):
                         if first_status:
                             self.states.clear()
                             first_status = False
                         self.states.append(val.prettyPrint())
-                    elif powerOID.isPrefixOf(oid):
+                    elif self.powerOID.isPrefixOf(oid):
                         if first_power:
                             self.power.clear()
                             first_power = False
@@ -161,6 +188,29 @@ class AtenPDU(PowerStripController):
         # Run I/O dispatcher which would send pending queries and process responses
         self.snmpEngine.transportDispatcher.runDispatcher()
 
+    def load_outlet_names_and_states(self):
+
+        self.bulkGet(self.namesOID)
+        self.bulkGet(self.statesOID)
+        self.bulkGet(self.powerOID)
+    
+        # has been quick enought for my home network, so i didn't
+        # care about waiting for results yet - works for me
+ 
+        self.outlets.clear()
+        i = 0
+        for name in self.names:
+            outlet = { 
+                    'name': self.names[i],
+                    'state': int(self.states[i]) - 1,
+                    'preset1': 0,
+                    'preset2': 0,
+                    'preset3': 0,
+                    'power': self.power[i]
+            }
+            self.outlets.append(outlet)
+            i += 1
+            
 
 
 class SignalWrap(urwid.WidgetWrap):                          
@@ -192,34 +242,43 @@ class SignalWrap(urwid.WidgetWrap):
 
         return result
 
-class NetPwrCtrl:
+class NetPwrCtrl(PowerStripController):
     def __init__(self, cfg):
-        self.cfg = cfg
-        # maps outlet names to socket numbers
-        self.outlets = {}
-        # keeps outlet states by name
-        self.states = []
-        self.presets = [[0, 0, 0, 0, 0, 0, 0, 0],[0, 0, 0, 0 ,0 ,0 ,0, 0],[0, 0, 0, 0, 0, 0, 0, 0]]
-        self.multi_power_on_delay = 2
-        self.last_refresh = None
+        super(NetPwrCtrl, self).__init__(cfg)
+
+    def is_outlet_configured(self, outlet_index): 
+        is_configured = False
+        # try to get outlet name from config, could be unconfigured
+        # in this case access to cfg entry fails in if condition
+        try:
+            if not self.cfg[str(outlet_index)] == None:
+                is_configured = True
+        except Exception as e:
+            print(e)
+
+        return is_configured
 
     def load_outlet_names_and_states(self):
         self.outlets.clear()
-        outlet_data = self.fetch_outlet_states()
+        outlet_data = self._fetch_outlet_states()
         outlet_index = 1
         for od in outlet_data:
-            # set state from rest reponse
-            self.states.append(int(od[1]))
-            # load config
-            try:
-                if not self.cfg[str(outlet_index)] == None:
-                    self.outlets[self.cfg[str(outlet_index)]] = od[1]
-            except:
-                True
+            if self.is_outlet_configured(outlet_index):
+                name = od[1]
+                outlet = { 
+                    'name': self.cfg[str(outlet_index)],
+                    'state': int(od[1]),
+                    'preset1': 0,
+                    'preset2': 0,
+                    'preset3': 0,
+                    'power': None
+      
+                }
+                self.outlets.append(outlet)
 
             outlet_index += 1
         
-    def fetch_outlet_states(self):
+    def _fetch_outlet_states(self):
         h = httplib2.Http()
         h.add_credentials(self.cfg['user'], self.cfg['pwd'])
         (resp_headers, content) = h.request("http://" + self.cfg['host'] + "/?Stat=" + self.cfg['user'] + self.cfg['pwd'], "GET")
@@ -238,7 +297,8 @@ class NetPwrCtrl:
         return outlet_data;
 
     def toggle_outlet(self, outlet_id):
-        if self.states[outlet_id-1] == 0:
+        #print(self.outlets[outlet_id-1]['state'])
+        if self.outlets[outlet_id-1]['state'] == 0:
             self.switch_on(outlet_id)
         else:
             self.switch_off(outlet_id)
@@ -249,37 +309,46 @@ class NetPwrCtrl:
 
     def switch_on(self, outlet_id):
         self._switch(outlet_id, "Sw_on")
-        self.states[outlet_id-1] = 1
+        self.outlets[outlet_id-1]['state'] = 1
 
     def switch_off(self, outlet_id):
         self._switch(outlet_id, "Sw_off")
-        self.states[outlet_id-1] = 0
+        self.outlets[outlet_id-1]['state'] = 0
 
 
     def activate_preset(self, preset_index):
         outlet_id = 1
         outlets_switched_on = 0
-        for p in self.presets[preset_index]:
-            if p != self.states[outlet_id-1]:
+
+        for outlet in self.outlets:
+            preset_value = outlet['preset'+ str(preset_index)]
+
+            if preset_value != outlet['state']:
                 # sleep before toggling the next outlet
                 if outlets_switched_on > 0:
                     time.sleep(self.multi_power_on_delay)
                 self.toggle_outlet(outlet_id)
-                if p == 1:
+                if preset_value == 1:
                    outlets_switched_on += 1
             outlet_id += 1
 
 
 
 class CursesUI:
+
+    # activated powerstrip config index
+    selected_powerstrip = 0
+
+    # checkbox lists
+    content = []
+    preset1_content = []
+    preset2_content = []
+    preset3_content = []
+
     def __init__(self):
-        self.content = []
-        self.preset1_content = []
-        self.preset2_content = []
-        self.preset3_content = []
         self.cfg = ConfigManager()
         if self.cfg.config_exists():
-            self.netpwrctrl = NetPwrCtrl(self.cfg.get_first_section())
+            self.load_config()
         self.quit_event_loop = False
         self.palette = [
             ('titlebar', 'light green', ''),
@@ -290,11 +359,41 @@ class CursesUI:
             ('button', 'white', 'light blue'),
             ('button_selected', 'black', 'yellow'),
             ('selected', 'black', 'light green')]
-        self.selected_powerstrip = None
     
 
+    def load_config(self):
+        cfg_sectionname = self.cfg.get_sections()[self.selected_powerstrip]
+        cfg_section = self.cfg.get_section(cfg_sectionname)
+        #print(cfg_section)
+        if cfg_section['model'] == "Anel":
+            #print("loading config " + cfg_section.name)
+            self.active_powerstrip = NetPwrCtrl(cfg_section)
+        elif cfg_section['model'] == "ATEN":
+            #print("loading config " + cfg_section.name)
+            self.active_powerstrip = AtenPDU(cfg_section)
+
+    def next_powerstrip(self, w, size, key):
+        next_index = self.selected_powerstrip + 1
+        if next_index > len(self.cfg.get_sections())-1:
+            next_index = 0
+
+        self.selected_powerstrip = next_index
+        self.load_config()
+        self.load_outlet_names_and_states()
+        self.title.set_text(self.active_powerstrip.cfg.name + u' ' + self.active_powerstrip.cfg['host'] + ':' + self.active_powerstrip.cfg['port'])
+             
+    def previous_powerstrip(self, w, size, key):
+        prev_index = self.selected_powerstrip - 1
+        if prev_index < 0:
+            prev_index = len(self.cfg.get_sections()) - 1
+
+        self.selected_powerstrip = prev_index
+        self.load_config()
+        self.load_outlet_names_and_states()
+        self.title.set_text(self.active_powerstrip.cfg.name + u' ' + self.active_powerstrip.cfg['host'] + ':' + self.active_powerstrip.cfg['port'])
+
     def load_outlet_names_and_states(self):
-        self.netpwrctrl.load_outlet_names_and_states()
+        self.active_powerstrip.load_outlet_names_and_states()
         self.content.clear()
         self.preset1_content.clear()
         self.preset2_content.clear()
@@ -307,17 +406,22 @@ class CursesUI:
         self.preset3_content.append(urwid.AttrMap(self.preset3_button, "normal", "selected"))
         self.preset3_content.append(urwid.Text(""))
 
-        outlet_id = 1
-        for outlet in self.netpwrctrl.outlets:
-            cb = urwid.CheckBox(outlet, self.netpwrctrl.states[outlet_id-1], on_state_change=self.on_checkbox_toggled)
+        for outlet in self.active_powerstrip.outlets:
+            # main checkbox
+            name = outlet['name']
+            if not outlet['power'] == None:
+                name += ' (' + outlet['power'] + 'mW)'
+
+            cb = urwid.CheckBox(name, outlet['state'], on_state_change=self.on_checkbox_toggled)
+
+            # checkboxes for preset visualization (have no handler)
             self.content.append(urwid.AttrMap(cb, "normal", "selected"))
-            cb_preset1 = urwid.CheckBox(outlet, self.netpwrctrl.presets[0][outlet_id-1])
+            cb_preset1 = urwid.CheckBox(outlet['name'], outlet['preset1'])
             self.preset1_content.append(urwid.AttrMap(cb_preset1, "normal", "selected"))
-            cb_preset2 = urwid.CheckBox(outlet, self.netpwrctrl.presets[1][outlet_id-1])
+            cb_preset2 = urwid.CheckBox(outlet['name'], outlet['preset2'])
             self.preset2_content.append(urwid.AttrMap(cb_preset2, "normal", "selected"))
-            cb_preset3 = urwid.CheckBox(outlet, self.netpwrctrl.presets[2][outlet_id-1])
+            cb_preset3 = urwid.CheckBox(outlet['name'], outlet['preset3'])
             self.preset3_content.append(urwid.AttrMap(cb_preset3, "normal", "selected"))
-            outlet_id += 1
 
     def init_ui(self):
     
@@ -330,10 +434,11 @@ class CursesUI:
             ('selected', 'black', 'light green')]
     
         
-        header_text = self.netpwrctrl.cfg.name + u' ' + self.netpwrctrl.cfg['host'] + ':' + self.netpwrctrl.cfg['port']
-        if not self.netpwrctrl.last_refresh == None:
-            header_test += ' ' + self.netpwrctrl.last_refresh
-        header = urwid.AttrMap(urwid.Text(header_text), 'titlebar')
+        header_text = self.active_powerstrip.cfg.name + u' ' + self.active_powerstrip.cfg['host'] + ':' + self.active_powerstrip.cfg['port']
+        if not self.active_powerstrip.get_last_refresh() == None:
+            header_test += ' ' + self.active_powerstrip.get_last_refresh()
+        self.title = urwid.Text(header_text)
+        header = urwid.AttrMap(self.title, 'titlebar')
         self.content = urwid.SimpleListWalker([])
         self.preset1_content = urwid.SimpleListWalker([])
         self.preset1_button = urwid.Button("Activate", on_press = self.activate_preset1)
@@ -366,13 +471,15 @@ class CursesUI:
          
     
         label_delay = urwid.Text([('hotkey', u'D'), u'elay  '])
-        self.layout = urwid.Frame(header=urwid.Columns([header, urwid.Columns([label_delay, urwid.Edit(caption="Multi Power on Delay: ", edit_text=str(self.netpwrctrl.multi_power_on_delay))])]), body=self.body_pile, footer=menu)
+        self.layout = urwid.Frame(header=urwid.Columns([header, urwid.Columns([label_delay, urwid.Edit(caption="Multi Power on Delay: ", edit_text=str(self.active_powerstrip.multi_power_on_delay))])]), body=self.body_pile, footer=menu)
 
         self.top = SignalWrap(self.layout)
         self.top.listen('q', self.quit)
         #self.top.listen('P', self.handle_edit_powerstrip_key)
         #self.top.listen('p', self.handle_edit_powersocket_key)
         self.top.listen('r', self.handle_reload_key)
+        self.top.listen('n', self.next_powerstrip)
+        self.top.listen('p', self.previous_powerstrip)
         self.top.listen('tab', self.toggle_ui_focus)
  
         self.screen = urwid.raw_display.Screen()
@@ -390,7 +497,7 @@ class CursesUI:
         self.screen.stop()
         self.quit_event_loop = True
 
-    def toggle_ui_focus(self):
+    def toggle_ui_focus(self, w, size, key):
        if self.layout.get_focus() == 'body':
            self.layout.focus_position = 'header'
        elif self.layout.get_focus() == 'header':
@@ -451,7 +558,7 @@ class CursesUI:
             try:
                 outlet_id = int(key)
                 if 0 < outlet_id < 9:
-                    self.netpwrctrl.toggle_outlet(outlet_id);
+                    self.active_powerstrip.toggle_outlet(outlet_id);
                     self.load_outlet_names_and_states()
             except:
                 True
@@ -462,18 +569,18 @@ class CursesUI:
 
     def toggle_selected_outlet(self):
         outlet_id = self.listbox.focus_position + 1
-        self.netpwrctrl.toggle_outlet(outlet_id);
+        self.active_powerstrip.toggle_outlet(outlet_id);
 
     def activate_preset1(self, x):
-        self.netpwrctrl.activate_preset(0)
+        self.active_powerstrip.activate_preset(0)
         self.load_outlet_names_and_states()
 
     def activate_preset2(self, x):
-        self.netpwrctrl.activate_preset(1)
+        self.active_powerstrip.activate_preset(1)
         self.load_outlet_names_and_states()
 
     def activate_preset3(self, x):
-        self.netpwrctrl.activate_preset(2)
+        self.active_powerstrip.activate_preset(2)
         self.load_outlet_names_and_states()
 
 
@@ -515,6 +622,9 @@ class CursesUI:
 
 
 class ConfigManager:
+ 
+    config = None 
+
     def __init__(self):
         self.config = configparser.ConfigParser()
         self.configfile = expanduser('~/.netpwrctrl.ini')
@@ -522,9 +632,8 @@ class ConfigManager:
         if self.config_exists:
             self.config.read(self.configfile)
 
-
     def get_sections(self):
-        self.config.sections()
+        return self.config.sections()
 
     def config_exists(self):
         return exists(self.configfile)
